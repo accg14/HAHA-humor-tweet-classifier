@@ -91,41 +91,32 @@ def train_and_evaluate(model, X_train, X_test, Y_train, Y_test):
   Y_test_id = np.argmax(Y_test, axis=1)
   f1_obtained = f1_score(predictions, Y_test_id, average='macro')
 
-  print('F1 macro: ', f1_obtained)
+  #print('F1 macro: ', f1_obtained)
   return model, f1_obtained
 
-def explore_models(model_id, model_name, embedding_matrix, X_train, X_test, Y_train, Y_test):
-  best_model = { 'f1': 0}
+def explore_models(model_id, model_name, activation_function, recurrent_function, layer_units, embedding_matrix, X_train, X_test, Y_train, Y_test):
+  print("--------------------------------------------")
+  print("Model configuration:")
+  print("  Activation function is: "+ activation_function)
+  print("  Recurrent function is: "+ recurrent_function)
+  print("  Layer units is: " + str(layer_units))
 
-  for function in FUNCTIONS:
-    for layer_units in RECURRENT_LAYER_UNITS:
-      print("--------------------------------------------")
-      print("Model configuration:")
-      print("  Activation function is: "+ function)
-      print("  Recurrent function is: "+ function)
-      print("  Layer units is: " + str(layer_units))
+  model = compile_model(model_id, embedding_matrix, activation_function, recurrent_function, layer_units)
+  model, f1_model = train_and_evaluate(model, X_train, X_test, Y_train, Y_test)
 
-      model = compile_model(model_id, embedding_matrix, function, function, layer_units)
-      model, f1_model = train_and_evaluate(model, X_train, X_test, Y_train, Y_test)
-
-      if f1_model > best_model['f1']:
-        best_model['f1'] = f1_model
-        best_model['layer_units'] = layer_units
-        best_model['function'] = function
-
-      print('  f1: ' + str(f1_model))
-      model_name = model_name + '_' + function + '_' + str(layer_units)
-      model.save(MODELS_DIR+model_name)
-      #del model
-  print(best_model)
+  print('  f1: ' + str(f1_model))
+  model.save(MODELS_DIR+model_name)
 
 if __name__ == "__main__":
   model_id = int(sys.argv[1])
   model_name = sys.argv[2]
+  activation_function = sys.argv[3]
+  recurrent_function = sys.argv[4]
+  layer_units = int(sys.argv[5])
 
   embedding_matrix = get_embedding_matrix()
   print('EMBEDDING MATRIX LOADED ' + u'\u2705')
   X_train, X_test, Y_train, Y_test = get_splitted_data()
   print('DATA SPLITTED ' + u'\u2705')
 
-  explore_models(model_id, model_name, embedding_matrix, X_train, X_test, Y_train, Y_test)
+  explore_models(model_id, model_name, activation_function, recurrent_function, layer_units, embedding_matrix, X_train, X_test, Y_train, Y_test)
