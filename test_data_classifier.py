@@ -1,20 +1,18 @@
+import sys
 import re
-import statistics
 import gensim
 import pandas as pd
 import numpy as np
-from numpy import savetxt
+from keras.models import load_model
 from keras.preprocessing.text import Tokenizer
 from keras.preprocessing.sequence import pad_sequences
 
 import load_vectors_300
-from constants import TOTAL_TWEETS, MECHANISM_ID, UNWANTED_CHARS, EMBEDDING_FILE_NAME, SANITIZED_DATA_DIR, EMBEDDING_MATRIX_DIR
+from constants import TOTAL_TWEETS, MECHANISM_ID, UNWANTED_CHARS, EMBEDDING_FILE_NAME, SANITIZED_DATA_DIR, MODELS_DIR, MEDIAN_TWEET_WORDS
 
 def load_sources():
-  train_data = pd.read_csv("sources/haha_mechanism_target_train.csv")
-  train_data.drop("id", axis=1, inplace=True)
-  train_data.drop("target", axis=1, inplace=True)
-  return train_data
+  test_data = pd.read_csv("sources/haha_mechanism_target_test.csv")
+  return test_data
 
 def sanitize_tweet(tweet):
   for char in UNWANTED_CHARS:
@@ -25,21 +23,14 @@ def sanitize_tweet(tweet):
   tweet = [token for token in tweet if token != ''] #remove unwanted spaces
   return tweet
 
-def get_sanitized_data(train_data):
+def get_sanitized_data(test_data):
   tweets = []
-  mechanisms = []
 
-  for idx, row in train_data.iterrows():
-    mechanisms.append(MECHANISM_ID.get(train_data.loc[idx, "mechanism"]))
-
-    sanitized_tweet = sanitize_tweet(train_data.loc[idx, "text"])
+  for idx, row in test_data.iterrows():
+    sanitized_tweet = sanitize_tweet(test_data.loc[idx, "text"])
     tweets.append(sanitized_tweet)
 
-  num_words_list = list(map(lambda x: len(x), tweets))
-  median_words_tweet = statistics.median(num_words_list)
-  print("The median words per tweet is: ", median_words_tweet)
-
-  return tweets, mechanisms, median_words_tweet
+  return tweets
 
 def get_vector_word(embedding, word):
   if word in embedding:
@@ -67,20 +58,26 @@ def generate_embedding_matrix(embedding):
           embedding_matrix[index] = embedding_vector
   return embedding_matrix, tokenizer
 
-def persist_in_file(tweets, mechanisms, embedding_matrix):
-  savetxt(SANITIZED_DATA_DIR + "tweets.csv", tweets, delimiter=',')
-  mechanisms = np.array(mechanisms)
-  savetxt(SANITIZED_DATA_DIR + "mechanisms.csv", mechanisms, delimiter=',')
-  #import pdb; pdb.set_trace()
-  savetxt(EMBEDDING_MATRIX_DIR + "embedding_matrix.csv", embedding_matrix, delimiter=',')
+def classify_tweets(tweets, model_name):
+  model = load_model(model_name)
+  reversed_dictionary = {value : key for (key, value) in MECHANISM_ID.items()}
 
-def preprocess_data():
-  print('Loading training data (CSV)...')
-  train_data = load_sources()
-  print('Train data loaded ' + u'\u2705')
+  predictions = np.argmax(model.predict(tweets), axis=-1)
+  predictions = predictions.tolist()
+  predictions = list(map(lambda x: x + 1, predictions))
+  predictions = list(map(lambda x: reversed_dictionary[x] , predictions))
 
-  print('Sanitizing tweets, mechanisms and computing median words...')
-  tweets, mechanisms, median_words_tweet = get_sanitized_data(train_data)
+  return predictions
+
+if __name__ == "__main__":
+  model_name = 'models/lstm_gru_sigmoid_sigmoid_45'
+
+  print('Loading test data (CSV)...')
+  test_data = load_sources()
+  print('Test data loaded ' + u'\u2705')
+
+  print('Sanitizing tweets...')
+  tweets = get_sanitized_data(test_data)
   print('Done' + u'\u2705')
 
   print('Importing embeddings from INCO file...')
@@ -93,9 +90,11 @@ def preprocess_data():
 
   print("Sequencing and padding tweets...")
   indexes_tweets = tokenizer.texts_to_sequences(tweets)
-  indexes_tweets = pad_sequences(indexes_tweets, maxlen=median_words_tweet)
+  indexes_tweets = pad_sequences(indexes_tweets, maxlen=MEDIAN_TWEET_WORDS)
   print('Sequenced and padding successfull' + u'\u2705')
 
-  print('Persisting sanitized data and embedding matrix...')
-  persist_in_file(indexes_tweets, mechanisms, embedding_matrix)
-  print('Sanitized data persisted successfully (embedding matrix as well)' + u'\u2705')
+  predictions = classify_tweets(indexes_tweets, model_name)
+
+  test_data['mechanism'] = predictions
+  test_data.to_csv('classifier_prediction.csv')
+
